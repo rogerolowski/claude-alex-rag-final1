@@ -1,0 +1,20 @@
+image:
+  file: Dockerfile
+
+tasks:
+  - name: Start LEGO AI Assistant
+    init: |
+      pip install -r app/requirements.txt
+      docker-compose build
+    command: |
+      docker-compose up
+
+ports:
+  - port: 8501
+    onOpen: open-browser
+    visibility: public
+
+vscode:
+  extensions:
+    - ms-python.python
+    - ms-vscode.docker
