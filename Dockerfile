@@ -5,7 +5,7 @@ WORKDIR /app
 COPY . /app
 
 # Install git
-RUN apt-get update && apt-get install -y git
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 
 RUN pip install -r app/requirements.txt
 

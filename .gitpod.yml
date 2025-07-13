@@ -4,7 +4,6 @@ image:
 tasks:
   - name: Start LEGO AI Assistant
     init: |
-      pip install -r app/requirements.txt
       docker-compose build
     command: |
       docker-compose up
@@ -17,4 +16,3 @@ ports:
 vscode:
   extensions:
     - ms-python.python
-    - ms-vscode.docker
