@@ -2,9 +2,9 @@ streamlit==1.38.0
 langchain==0.3.0
 langchain-openai==0.2.0
 pydantic==2.8.2
-sqlite3
 chromadb==0.5.5
 requests==2.32.3
 rebrick==0.2.0
 brickse==0.1.0
 python-dotenv==1.0.1
+sentence-transformers
