@@ -3,6 +3,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 COPY . /app
+
+# Install git
+RUN apt-get update && apt-get install -y git
+
 RUN pip install -r app/requirements.txt
 
 EXPOSE 8501
