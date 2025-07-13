@@ -1,5 +1,7 @@
 # LEGO AI Assistant
 
+[![Gitpod Ready-to-Code](https://img.shields.io/badge/Gitpod-Ready--to--Code-blue?logo=gitpod)](https://gitpod.io/#https://github.com/rogerolowski/claude-alex-rag-final1)
+
 A Streamlit-based AI assistant for LEGO collectors that combines multiple LEGO APIs with semantic search and AI-powered responses.
 
 ## Features
