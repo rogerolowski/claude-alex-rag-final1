@@ -8,6 +8,9 @@ import os
 
 load_dotenv()
 
+# DEBUG: Print the loaded Brickset API key to verify .env loading
+print("DEBUG: BRICKSET_API_KEY =", os.getenv("BRICKSET_API_KEY"))
+
 class BricksetAPIv3:
     BASE_URL = "https://brickset.com/api/v3.asmx"
 
@@ -31,9 +34,12 @@ class BricksetAPIv3:
             "pageNumber": 1
         }
         response = requests.post(f"{self.BASE_URL}/getSets", data=payload)
+        # DEBUG: Print the raw API response for troubleshooting
+        print("DEBUG: Brickset API response text:", response.text)
         try:
             return response.json().get("sets", [])
-        except Exception:
+        except Exception as e:
+            print("DEBUG: JSON decode error:", e)
             return []
 
     def get_set_by_id(self, set_id: str):
@@ -46,10 +52,13 @@ class BricksetAPIv3:
             "pageNumber": 1
         }
         response = requests.post(f"{self.BASE_URL}/getSets", data=payload)
+        # DEBUG: Print the raw API response for troubleshooting
+        print("DEBUG: Brickset API response text:", response.text)
         try:
             sets = response.json().get("sets", [])
             return sets[0] if sets else None
-        except Exception:
+        except Exception as e:
+            print("DEBUG: JSON decode error:", e)
             return None
 
 class LegoAPI:
