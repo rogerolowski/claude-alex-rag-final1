@@ -52,20 +52,22 @@ class BricksetAPIv3:
         if len(self.api_key) < 10:
             print(f"DEBUG: WARNING - API key seems too short: {len(self.api_key)} characters")
         
-        # Calls the Brickset getSets API method
+        # Calls the Brickset getSets API method with correct params wrapper
         payload = {
-            "apiKey": self.api_key,
-            "userHash": "",
-            "query": query,
-            "theme": "",
-            "subtheme": "",
-            "setNumber": "",
-            "year": "",
-            "owned": "",
-            "wanted": "",
-            "orderBy": "",
-            "pageSize": 5,
-            "pageNumber": 1
+            "params": {
+                "apiKey": self.api_key,
+                "userHash": "",
+                "query": query,
+                "theme": "",
+                "subtheme": "",
+                "setNumber": "",
+                "year": "",
+                "owned": "",
+                "wanted": "",
+                "orderBy": "",
+                "pageSize": 5,
+                "pageNumber": 1
+            }
         }
         
         # DEBUG: Print the request payload
@@ -73,7 +75,7 @@ class BricksetAPIv3:
         
         try:
             print(f"DEBUG: Making POST request to: {self.BASE_URL}/getSets")
-            response = requests.post(f"{self.BASE_URL}/getSets", data=payload, timeout=30)
+            response = requests.post(f"{self.BASE_URL}/getSets", json=payload, timeout=30)
             print(f"DEBUG: Response status code: {response.status_code}")
             print(f"DEBUG: Response headers: {dict(response.headers)}")
             print(f"DEBUG: Response content type: {response.headers.get('content-type', 'unknown')}")
@@ -135,17 +137,19 @@ class BricksetAPIv3:
         # DEBUG: Print the set ID being requested
         print(f"DEBUG: get_set_by_id called with set_id: '{set_id}'")
         
-        # Calls getSets with setNumber to fetch a specific set
+        # Calls getSets with setNumber to fetch a specific set with correct params wrapper
         payload = {
-            "apiKey": self.api_key,
-            "userHash": "",
-            "setNumber": set_id,
-            "pageSize": 1,
-            "pageNumber": 1
+            "params": {
+                "apiKey": self.api_key,
+                "userHash": "",
+                "setNumber": set_id,
+                "pageSize": 1,
+                "pageNumber": 1
+            }
         }
         
         try:
-            response = requests.post(f"{self.BASE_URL}/getSets", data=payload, timeout=30)
+            response = requests.post(f"{self.BASE_URL}/getSets", json=payload, timeout=30)
             print(f"DEBUG: get_set_by_id response status: {response.status_code}")
             
             # DEBUG: Print the raw API response for troubleshooting
