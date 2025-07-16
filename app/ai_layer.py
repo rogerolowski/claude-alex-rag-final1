@@ -43,12 +43,35 @@ class AILayer:
             # Initialize prompt template
             logger.debug("Setting up prompt template...")
             self.prompt = ChatPromptTemplate.from_template("""
-                You are a LEGO expert assistant. Use the following context to answer the user's query:
-                Structured Data: {structured_data}
-                Semantic Search Results: {semantic_results}
-                API Data: {api_data}
-                User Query: {query}
-                Provide a concise, informative response for LEGO collectors.
+                You are a knowledgeable LEGO expert assistant with deep knowledge of LEGO sets, themes, history, and collecting. 
+                
+                Use the following context to provide a comprehensive, informative response about LEGO sets:
+                
+                **Available Data:**
+                - Structured Database Results: {structured_data}
+                - Semantic Search Results: {semantic_results}
+                - External API Data: {api_data}
+                
+                **User Query:** {query}
+                
+                **Your Task:**
+                Provide a rich, detailed response that includes:
+                1. **Historical Context**: Information about the LEGO theme, era, or set type mentioned
+                2. **Technical Details**: Piece counts, complexity levels, building techniques
+                3. **Collecting Insights**: Rarity, value trends, collector tips
+                4. **Set Recommendations**: Similar sets, related themes, or alternatives
+                5. **Fun Facts**: Interesting trivia, behind-the-scenes info, or notable features
+                
+                **Response Guidelines:**
+                - Be enthusiastic and engaging
+                - Include specific details about sets when available
+                - Mention piece counts, years, themes, and prices when relevant
+                - Provide context about LEGO history and collecting
+                - Suggest related sets or themes
+                - Use bullet points or numbered lists for clarity
+                - Keep the tone informative but fun
+                
+                If no specific sets are found, provide general information about the LEGO theme, era, or concept mentioned in the query.
             """)
             logger.debug("✅ Prompt template initialized")
             
@@ -207,6 +230,68 @@ class AILayer:
         except Exception as e:
             logger.error(f"❌ Failed to get AI layer stats: {e}")
             return {"error": str(e)}
+
+    def get_theme_info(self, theme: str) -> str:
+        """Get detailed information about a specific LEGO theme"""
+        logger.debug(f"Getting detailed info for theme: {theme}")
+        
+        try:
+            # Get sets from the theme
+            theme_sets = self.data_layer.search_by_theme(theme, limit=10)
+            
+            # Create a detailed prompt for theme information
+            theme_prompt = f"""
+            You are a LEGO expert. Provide comprehensive information about the {theme} LEGO theme.
+            
+            Available sets from this theme: {[s.dict() for s in theme_sets]}
+            
+            Please provide:
+            1. **History**: When did this theme start and how has it evolved?
+            2. **Popularity**: Why is this theme popular among collectors?
+            3. **Notable Sets**: What are the most famous or valuable sets?
+            4. **Building Techniques**: What unique building techniques are used?
+            5. **Collecting Tips**: Advice for collectors interested in this theme
+            6. **Fun Facts**: Interesting trivia about the theme
+            
+            Make your response engaging and informative for LEGO enthusiasts.
+            """
+            
+            response = self.llm.invoke(theme_prompt)
+            return response.content
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get theme info: {e}")
+            return f"Sorry, I couldn't retrieve information about the {theme} theme at this time."
+
+    def get_set_recommendations(self, query: str) -> str:
+        """Get personalized set recommendations based on user query"""
+        logger.debug(f"Getting set recommendations for: {query}")
+        
+        try:
+            # Get some relevant sets
+            relevant_sets = self.data_layer.semantic_search(query, n_results=5)
+            
+            recommendation_prompt = f"""
+            You are a LEGO expert giving personalized recommendations. A user asked: "{query}"
+            
+            Available sets that might be relevant: {[s.dict() for s in relevant_sets]}
+            
+            Provide:
+            1. **Direct Recommendations**: Specific sets that match their interests
+            2. **Alternative Options**: Similar sets they might enjoy
+            3. **Price Considerations**: Budget-friendly vs premium options
+            4. **Building Experience**: Sets for beginners vs advanced builders
+            5. **Collecting Value**: Sets with good investment potential
+            
+            Make your recommendations personal and helpful.
+            """
+            
+            response = self.llm.invoke(recommendation_prompt)
+            return response.content
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get recommendations: {e}")
+            return "Sorry, I couldn't generate recommendations at this time."
 
     def cleanup(self):
         """Clean up AI layer resources"""

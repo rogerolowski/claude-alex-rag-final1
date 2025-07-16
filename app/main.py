@@ -2,6 +2,7 @@
 import streamlit as st
 from ai_layer import AILayer  # If you use AI features
 from api_layer import LegoAPI
+from search_processor import create_search_processor
 import logging
 import time
 import traceback
@@ -28,6 +29,11 @@ def initialize_app():
         lego_api = LegoAPI()
         logger.debug("✅ LegoAPI initialized successfully")
         
+        # Initialize search processor
+        logger.debug("Initializing SmartSearchProcessor...")
+        search_processor = create_search_processor()
+        logger.debug("✅ SmartSearchProcessor initialized successfully")
+        
         # Initialize AI layer (optional)
         ai_layer = None
         try:
@@ -41,7 +47,7 @@ def initialize_app():
         init_time = time.time() - start_time
         logger.debug(f"✅ Application initialization completed in {init_time:.2f}s")
         
-        return lego_api, ai_layer
+        return lego_api, search_processor, ai_layer
         
     except Exception as e:
         logger.error(f"❌ Application initialization failed: {e}")
@@ -73,8 +79,8 @@ def display_debug_info(lego_api: Optional[LegoAPI], ai_layer: Optional[AILayer])
             except Exception as e:
                 st.sidebar.write(f"**AI Status:** ❌ Error - {str(e)}")
 
-def handle_search(lego_api: LegoAPI, query: str):
-    """Handle search functionality with comprehensive error handling"""
+def handle_search(lego_api: LegoAPI, search_processor, query: str):
+    """Handle search functionality with smart processing and comprehensive error handling"""
     logger.debug(f"Handling search for query: '{query}'")
     start_time = time.time()
     
@@ -88,15 +94,32 @@ def handle_search(lego_api: LegoAPI, query: str):
         query = query.strip()
         logger.debug(f"✅ Query validated: '{query}'")
         
-        # Perform search
-        logger.debug("Performing search...")
-        with st.spinner("Searching for LEGO sets..."):
-            results = lego_api.search_sets(query)
+        # Process query with smart search processor
+        logger.debug("Processing query with smart search processor...")
+        processed_query = search_processor.process_query(query)
+        
+        # Generate multiple search queries
+        search_queries = search_processor.generate_search_queries(processed_query)
+        logger.debug(f"Generated search queries: {search_queries}")
+        
+        # Try each search query until we find results
+        all_results = []
+        for search_query in search_queries:
+            logger.debug(f"Trying search query: '{search_query}'")
+            with st.spinner(f"Searching for '{search_query}'..."):
+                results = lego_api.search_sets(search_query)
+                if results:
+                    all_results.extend(results)
+                    logger.debug(f"Found {len(results)} results for '{search_query}'")
+        
+        # Remove duplicates and rank results
+        unique_results = list({result.set_id: result for result in all_results}.values())
+        ranked_results = search_processor.rank_results(unique_results, processed_query)
         
         search_time = time.time() - start_time
-        logger.debug(f"✅ Search completed in {search_time:.2f}s, found {len(results)} results")
+        logger.debug(f"✅ Smart search completed in {search_time:.2f}s, found {len(ranked_results)} unique results")
         
-        return results
+        return ranked_results
         
     except Exception as e:
         search_time = time.time() - start_time
@@ -138,7 +161,7 @@ def main():
     )
     
     # Initialize components
-    lego_api, ai_layer = initialize_app()
+    lego_api, search_processor, ai_layer = initialize_app()
     
     if not lego_api:
         st.error("Failed to initialize the application. Please check your configuration.")
@@ -154,74 +177,91 @@ def main():
     # Display debug info
     display_debug_info(lego_api, ai_layer)
     
-    # Search interface
-    st.header("Search LEGO Sets")
+    # AI-Powered LEGO Assistant Interface
+    st.header("🤖 AI LEGO Expert Assistant")
     
-    # Search input
-    query = st.text_input("Search for a LEGO set:", placeholder="e.g., star wars, millennium falcon, technic")
+    # Search input with examples
+    st.markdown("""
+    **Ask me anything about LEGO! Try these example queries:**
+    - `Tell me about the oldest Star Wars sets`
+    - `What are the largest Technic sets ever made?`
+    - `Give me information about Millennium Falcon sets`
+    - `What should I know about LEGO City police stations?`
+    - `Tell me about rare LEGO sets from the 1990s`
+    - `What are the most expensive LEGO sets?`
+    """)
+    
+    query = st.text_input("Ask about LEGO sets:", placeholder="e.g., Tell me about Star Wars LEGO sets, What are the largest Technic sets?")
     
     if query:
-        logger.debug(f"User searched for: '{query}'")
+        logger.debug(f"User asked: '{query}'")
         
-        # Perform search
-        results = handle_search(lego_api, query)
-        
-        if results and len(results) > 0:
-            logger.debug(f"Displaying {len(results)} search results")
-            
-            # Show results as a selectable list
-            set_names = [f"{s.set_id}: {s.name} ({s.theme})" for s in results]
-            selected = st.selectbox("Select a set to view details:", set_names)
-            selected_set = results[set_names.index(selected)]
-            
-            logger.debug(f"User selected set: {selected_set.set_id}")
-            
-            # Use expander for details
-            with st.expander("Show full details and price"):
-                if st.button("Fetch details for selected set"):
-                    logger.debug(f"User requested details for set: {selected_set.set_id}")
+        # Use AI layer to get comprehensive response
+        if ai_layer:
+            with st.spinner("🤖 AI is analyzing your query and gathering information..."):
+                try:
+                    search_result = ai_layer.process_query(query)
                     
-                    full_set = handle_set_details(lego_api, selected_set.set_id)
-                    
-                    if full_set:
-                        logger.debug("Displaying set details")
+                    if search_result and search_result.ai_response:
+                        # Display AI response prominently
+                        st.markdown("## 🧠 AI Response")
+                        st.markdown(search_result.ai_response)
                         
-                        # Display set information
-                        st.subheader(full_set.name)
+                        # Show related sets if available
+                        if search_result.sets and len(search_result.sets) > 0:
+                            st.markdown("## 📦 Related LEGO Sets")
+                            
+                            # Display sets in a nice format
+                            for i, lego_set in enumerate(search_result.sets[:5]):  # Show top 5
+                                with st.expander(f"**{lego_set.name}** ({lego_set.theme})"):
+                                    col1, col2 = st.columns(2)
+                                    with col1:
+                                        st.write(f"**Set ID:** {lego_set.set_id}")
+                                        st.write(f"**Theme:** {lego_set.theme}")
+                                        st.write(f"**Pieces:** {lego_set.piece_count}")
+                                    with col2:
+                                        st.write(f"**Year:** {lego_set.release_year or 'N/A'}")
+                                        st.write(f"**Price:** {lego_set.price or 'N/A'}")
+                                    
+                                    if lego_set.description:
+                                        st.write(f"**Description:** {lego_set.description}")
+                                    
+                                    # Button to get full details
+                                    if st.button(f"Get full details for {lego_set.set_id}", key=f"details_{i}"):
+                                        full_set = handle_set_details(lego_api, lego_set.set_id)
+                                        if full_set:
+                                            st.success(f"✅ Full details loaded for {full_set.name}")
                         
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.write(f"**Set ID:** {full_set.set_id}")
-                            st.write(f"**Theme:** {full_set.theme}")
-                            st.write(f"**Pieces:** {full_set.piece_count}")
-                        
-                        with col2:
-                            st.write(f"**Year:** {full_set.release_year or 'N/A'}")
-                            st.write(f"**Price:** {full_set.price or 'N/A'}")
-                        
-                        if full_set.description:
-                            st.write(f"**Description:** {full_set.description}")
-                        
-                        logger.debug("✅ Set details displayed successfully")
+                        logger.debug("✅ AI response displayed successfully")
                     else:
-                        logger.warning("Failed to display set details")
+                        st.warning("No AI response generated. Please try a different query.")
+                        
+                except Exception as e:
+                    logger.error(f"❌ AI processing failed: {e}")
+                    st.error(f"Sorry, I encountered an error while processing your query: {str(e)}")
         else:
-            logger.debug("No search results found")
-            st.info("No sets found for your search.")
+            st.error("AI layer is not available. Please check your OpenAI API key configuration.")
             
-            # Show helpful suggestions
-            st.write("**Try searching for:**")
-            st.write("- Popular themes: 'Star Wars', 'City', 'Technic'")
-            st.write("- Set names: 'Millennium Falcon', 'Police Station'")
-            st.write("- Set numbers: '75192', '10278'")
+            # Fallback to regular search
+            st.info("Falling back to regular search...")
+            results = handle_search(lego_api, search_processor, query)
+            
+            if results and len(results) > 0:
+                st.write(f"Found {len(results)} sets:")
+                for set_obj in results[:5]:
+                    st.write(f"- {set_obj.name} ({set_obj.theme}) - {set_obj.piece_count} pieces")
+            else:
+                st.info("No sets found for your query.")
     else:
-        st.info("Enter a search term to find LEGO sets.")
+        st.info("👋 Ask me anything about LEGO sets, themes, history, or collecting!")
         
-        # Show example searches
-        st.write("**Example searches:**")
-        st.write("- 'star wars' - Find Star Wars sets")
-        st.write("- 'technic' - Find Technic sets")
-        st.write("- 'millennium falcon' - Find specific sets")
+        # Show example queries
+        st.markdown("**Example questions:**")
+        st.markdown("- *What are the most popular LEGO themes?*")
+        st.markdown("- *Tell me about rare LEGO sets*")
+        st.markdown("- *What should I know about Technic sets?*")
+        st.markdown("- *Give me information about Star Wars LEGO*")
+        st.markdown("- *What are the largest LEGO sets ever made?*")
     
     # Footer with debug info
     if st.session_state.debug_mode:

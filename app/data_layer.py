@@ -1,7 +1,7 @@
-# SQLite and ChromaDB logic 
+# SQLite and LangChain Chroma logic 
 import sqlite3
-from chromadb import Client
-from chromadb.utils import embedding_functions
+from langchain.embeddings import HuggingFaceEmbeddings
+from langchain.vectorstores import Chroma
 from models import LegoSet
 import logging
 import time
@@ -22,23 +22,20 @@ class DataLayer:
             self.conn = sqlite3.connect(db_path)
             logger.debug(f"✅ SQLite connection established: {db_path}")
             
-            # Initialize ChromaDB
-            logger.debug("Initializing ChromaDB client...")
-            self.chroma_client = Client()
-            logger.debug("✅ ChromaDB client initialized")
+            # Initialize LangChain Chroma with HuggingFace embeddings
+            logger.debug("Initializing LangChain Chroma with HuggingFace embeddings...")
+            self.embedding_function = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+            logger.debug("✅ HuggingFace embeddings initialized")
             
-            # Create or get collection
-            logger.debug(f"Setting up ChromaDB collection: {collection_name}")
-            try:
-                self.collection = self.chroma_client.get_collection(name=collection_name)
-                logger.debug(f"✅ Retrieved existing collection: {collection_name}")
-            except Exception as e:
-                logger.debug(f"Collection not found, creating new one: {e}")
-                self.collection = self.chroma_client.create_collection(
-                    name=collection_name,
-                    embedding_function=embedding_functions.SentenceTransformerEmbeddingFunction()
-                )
-                logger.debug(f"✅ Created new collection: {collection_name}")
+            # Create or get Chroma vectorstore
+            logger.debug(f"Setting up Chroma vectorstore: {collection_name}")
+            persist_directory = f"./chroma_db_{collection_name}"
+            self.vectorstore = Chroma(
+                persist_directory=persist_directory,
+                embedding_function=self.embedding_function,
+                collection_name=collection_name
+            )
+            logger.debug(f"✅ Chroma vectorstore initialized: {persist_directory}")
             
             # Create database table
             self.create_table()
@@ -87,17 +84,18 @@ class DataLayer:
                 ))
             logger.debug("✅ Stored in SQLite successfully")
             
-            # Store in ChromaDB for semantic search
-            logger.debug("Storing in ChromaDB...")
+            # Store in LangChain Chroma for semantic search
+            logger.debug("Storing in LangChain Chroma...")
             document_text = lego_set.description or lego_set.name
             logger.debug(f"Document text for embedding: {document_text[:100]}...")
             
-            self.collection.add(
+            # Add document to vectorstore
+            self.vectorstore.add_documents(
                 documents=[document_text],
                 metadatas=[lego_set.dict()],
                 ids=[lego_set.set_id]
             )
-            logger.debug("✅ Stored in ChromaDB successfully")
+            logger.debug("✅ Stored in LangChain Chroma successfully")
             
             elapsed_time = time.time() - start_time
             logger.debug(f"✅ Set stored successfully in {elapsed_time:.2f}s")
@@ -149,33 +147,113 @@ class DataLayer:
             logger.error(f"Params: {params}")
             raise
 
+    def search_by_theme(self, theme: str, limit: int = 10) -> List[LegoSet]:
+        """Search for sets by theme"""
+        logger.debug(f"Searching by theme: {theme}")
+        query = """
+            SELECT * FROM lego_sets 
+            WHERE theme LIKE ? 
+            ORDER BY release_year DESC 
+            LIMIT ?
+        """
+        return self.query_sqlite(query, (f"%{theme}%", limit))
+
+    def get_oldest_set_by_theme(self, theme: str) -> Optional[LegoSet]:
+        """Get the oldest set for a specific theme"""
+        logger.debug(f"Getting oldest set for theme: {theme}")
+        query = """
+            SELECT * FROM lego_sets 
+            WHERE theme LIKE ? AND release_year IS NOT NULL
+            ORDER BY release_year ASC 
+            LIMIT 1
+        """
+        results = self.query_sqlite(query, (f"%{theme}%",))
+        return results[0] if results else None
+
+    def get_newest_set_by_theme(self, theme: str) -> Optional[LegoSet]:
+        """Get the newest set for a specific theme"""
+        logger.debug(f"Getting newest set for theme: {theme}")
+        query = """
+            SELECT * FROM lego_sets 
+            WHERE theme LIKE ? AND release_year IS NOT NULL
+            ORDER BY release_year DESC 
+            LIMIT 1
+        """
+        results = self.query_sqlite(query, (f"%{theme}%",))
+        return results[0] if results else None
+
+    def get_largest_set_by_theme(self, theme: str) -> Optional[LegoSet]:
+        """Get the largest set (by piece count) for a specific theme"""
+        logger.debug(f"Getting largest set for theme: {theme}")
+        query = """
+            SELECT * FROM lego_sets 
+            WHERE theme LIKE ? AND piece_count IS NOT NULL
+            ORDER BY piece_count DESC 
+            LIMIT 1
+        """
+        results = self.query_sqlite(query, (f"%{theme}%",))
+        return results[0] if results else None
+
+    def get_smallest_set_by_theme(self, theme: str) -> Optional[LegoSet]:
+        """Get the smallest set (by piece count) for a specific theme"""
+        logger.debug(f"Getting smallest set for theme: {theme}")
+        query = """
+            SELECT * FROM lego_sets 
+            WHERE theme LIKE ? AND piece_count IS NOT NULL
+            ORDER BY piece_count ASC 
+            LIMIT 1
+        """
+        results = self.query_sqlite(query, (f"%{theme}%",))
+        return results[0] if results else None
+
+    def search_by_year(self, year: int, limit: int = 10) -> List[LegoSet]:
+        """Search for sets by release year"""
+        logger.debug(f"Searching by year: {year}")
+        query = """
+            SELECT * FROM lego_sets 
+            WHERE release_year = ? 
+            ORDER BY piece_count DESC 
+            LIMIT ?
+        """
+        return self.query_sqlite(query, (year, limit))
+
+    def search_by_set_number(self, set_number: str) -> Optional[LegoSet]:
+        """Search for a specific set by set number"""
+        logger.debug(f"Searching by set number: {set_number}")
+        query = """
+            SELECT * FROM lego_sets 
+            WHERE set_id = ? 
+            LIMIT 1
+        """
+        results = self.query_sqlite(query, (set_number,))
+        return results[0] if results else None
+
     def semantic_search(self, query: str, n_results=5) -> List[LegoSet]:
-        """Perform semantic search using ChromaDB"""
+        """Perform semantic search using LangChain Chroma"""
         logger.debug(f"Performing semantic search: '{query}' with n_results={n_results}")
         start_time = time.time()
         
         try:
-            results = self.collection.query(
-                query_texts=[query], 
-                n_results=n_results
-            )
+            # Use LangChain Chroma similarity search
+            docs = self.vectorstore.similarity_search(query, k=n_results)
             
-            logger.debug(f"ChromaDB returned {len(results['metadatas'][0])} results")
+            logger.debug(f"LangChain Chroma returned {len(docs)} results")
             
-            # Convert metadata to LegoSet objects
+            # Convert documents to LegoSet objects
             sets = []
-            for i, metadata in enumerate(results["metadatas"][0]):
+            for doc in docs:
                 try:
+                    metadata = doc.metadata
                     # Ensure set_id is string in metadata
                     if 'set_id' in metadata and metadata['set_id'] is not None:
                         metadata['set_id'] = str(metadata['set_id'])
                     
                     lego_set = LegoSet(**metadata)
                     sets.append(lego_set)
-                    logger.debug(f"✅ Converted metadata to LegoSet: {lego_set.set_id}")
+                    logger.debug(f"✅ Converted document to LegoSet: {lego_set.set_id}")
                 except Exception as e:
-                    logger.warning(f"⚠️ Failed to convert metadata to LegoSet: {e}")
-                    logger.warning(f"Metadata: {metadata}")
+                    logger.warning(f"⚠️ Failed to convert document to LegoSet: {e}")
+                    logger.warning(f"Document metadata: {doc.metadata}")
                     continue
             
             elapsed_time = time.time() - start_time
@@ -203,16 +281,16 @@ class DataLayer:
                 cursor = self.conn.execute("SELECT COUNT(*) FROM lego_sets WHERE release_year IS NOT NULL")
                 year_count = cursor.fetchone()[0]
             
-            # ChromaDB stats
+            # LangChain Chroma stats
             try:
-                chroma_count = self.collection.count()
+                chroma_count = len(self.vectorstore.get())
             except Exception as e:
-                logger.warning(f"Could not get ChromaDB count: {e}")
+                logger.warning(f"Could not get LangChain Chroma count: {e}")
                 chroma_count = "Unknown"
             
             stats = {
                 "sqlite_sets": sqlite_count,
-                "chromadb_sets": chroma_count,
+                "chroma_sets": chroma_count,
                 "priced_sets": priced_count,
                 "sets_with_year": year_count
             }
