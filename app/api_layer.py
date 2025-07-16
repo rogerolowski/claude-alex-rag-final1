@@ -1,11 +1,12 @@
 # Unified LEGO API interface 
 import requests
+import brickse
+import json
 from rebrick import Rebrick
 from models import LegoSet
 from typing import List
 from dotenv import load_dotenv
 import os
-import json
 
 load_dotenv()
 
@@ -22,223 +23,104 @@ print(f"DEBUG: .env file exists: {os.path.exists(env_file_path)}")
 if os.path.exists(env_file_path):
     print(f"DEBUG: .env file size: {os.path.getsize(env_file_path)} bytes")
 
-class BricksetAPIv3:
-    LOGIN_URL = "https://brickset.com/api/v3.asmx/login"
-    GETSETS_URL = "https://brickset.com/api/v3.asmx/getSets"
-
-    def __init__(self, api_key, username=None, password=None):
-        self.api_key = api_key
-        print(f"DEBUG: BricksetAPIv3 initialized with key: {self.api_key[:10]}..." if self.api_key else "DEBUG: BricksetAPIv3 initialized with NO KEY")
-        print(f"DEBUG: BricksetAPIv3 initialized with username: {username}")
+def init_brickset():
+    """Initialize brickse with available credentials"""
+    api_key = os.getenv("BRICKSET_API_KEY")
+    username = os.getenv("BRICKSET_USERNAME")
+    password = os.getenv("BRICKSET_PASSWORD")
+    
+    if not api_key:
+        print("DEBUG: ❌ ERROR - No BRICKSET_API_KEY provided!")
+        return False
         
-        # Optional authentication - try login if credentials provided
+    try:
         if username and password:
-            print("DEBUG: Attempting login with username/password...")
-            self.user_hash = self._login(username, password)
-            if self.user_hash:
-                print(f"DEBUG: ✅ Login successful, user_hash: {self.user_hash[:10]}...")
-                print("DEBUG: ✅ Authentication verified - API calls will work")
-            else:
-                print("DEBUG: ❌ Login failed - API access may be limited")
-                print("DEBUG: ❌ Please check your Brickset credentials in .env file")
+            print("DEBUG: 🔐 Initializing brickse with username/password authentication...")
+            brickse.init(api_key, username, password)
+            print("DEBUG: ✅ brickse initialized with username/password")
         else:
-            print("DEBUG: ⚠️ No username/password provided - using API key only")
-            print("DEBUG: ⚠️ Note: Brickset may require authentication for most endpoints")
-            self.user_hash = None
-        
-        # DEBUG: Test API connectivity
-        self.test_api_connectivity()
-
-    def test_api_connectivity(self):
-        """Test if we can reach the Brickset API endpoint"""
-        try:
-            print("DEBUG: Testing Brickset API connectivity...")
-            response = requests.get(self.GETSETS_URL, timeout=10)
-            print(f"DEBUG: ✅ Brickset API endpoint reachable: {response.status_code}")
-        except Exception as e:
-            print(f"DEBUG: ❌ Brickset API connectivity test failed: {e}")
-
-    def _login(self, username, password):
-        try:
-            print(f"DEBUG: Sending login request to {self.LOGIN_URL}")
-            resp = requests.post(
-                self.LOGIN_URL,
-                json={"params": {
-                    "apiKey": self.api_key,
-                    "username": username,
-                    "password": password
-                }},
-                timeout=10,
-            )
-            print(f"DEBUG: Login response status: {resp.status_code}")
+            print("DEBUG: 🔑 Initializing brickse with API key only...")
+            brickse.init(api_key)
+            print("DEBUG: ✅ brickse initialized with API key only")
             
-            resp.raise_for_status()
-            data = resp.json()
-            print(f"DEBUG: Login response data: {data}")
-            
-            if data and len(data) > 0 and "hash" in data[0]:
-                user_hash = data[0]["hash"]
-                print(f"DEBUG: ✅ Successfully extracted user_hash: {user_hash[:10]}...")
-                return user_hash
-            else:
-                print("DEBUG: ❌ Login response missing hash")
-                print(f"DEBUG: Response structure: {data}")
-                return None
-                
-        except requests.exceptions.HTTPError as e:
-            print(f"DEBUG: ❌ HTTP Error during login: {e}")
-            if e.response.status_code == 401:
-                print("DEBUG: ❌ 401 Unauthorized - Check your username/password")
-            elif e.response.status_code == 403:
-                print("DEBUG: ❌ 403 Forbidden - Check your API key")
-            return None
-        except Exception as e:
-            print(f"DEBUG: ❌ Login failed with exception: {e}")
-            return None
-
-    def get_sets(self, query, page_size=5, page_number=1):
-        # DEBUG: Print the search query and authentication status
-        print(f"DEBUG: get_sets called with query: '{query}'")
-        print(f"DEBUG: Using API key: {self.api_key[:10]}..." if self.api_key else "DEBUG: ❌ NO API KEY AVAILABLE")
-        print(f"DEBUG: Using user_hash: {self.user_hash[:10] if self.user_hash else 'None'}...")
+        return True
         
-        # DEBUG: Validate API key
-        if not self.api_key:
-            print("DEBUG: ❌ ERROR - No API key provided!")
+    except Exception as e:
+        print(f"DEBUG: ❌ Failed to initialize brickse: {e}")
+        return False
+
+def search_brickset_sets(query: str, page_size=5, page_number=1):
+    """Search for LEGO sets using brickse"""
+    print(f"DEBUG: search_brickset_sets called with query: '{query}'")
+    
+    try:
+        print("DEBUG: 🔍 Searching for sets using brickse.lego.get_sets...")
+        
+        # Use brickse to search for sets
+        response = brickse.lego.get_sets(query=query)
+        
+        # Parse the response
+        data = json.loads(response.read())
+        print(f"DEBUG: ✅ brickse search successful")
+        print(f"DEBUG: Response type: {type(data)}")
+        
+        # Handle different response formats
+        if isinstance(data, dict) and 'sets' in data:
+            sets = data['sets']
+            print(f"DEBUG: ✅ Found {len(sets)} sets")
+            return sets
+        elif isinstance(data, list):
+            print(f"DEBUG: ✅ Found {len(data)} sets (direct list)")
+            return data
+        else:
+            print(f"DEBUG: ⚠️ Unexpected response format: {data}")
             return []
-        
-        if len(self.api_key) < 10:
-            print(f"DEBUG: ⚠️ WARNING - API key seems too short: {len(self.api_key)} characters")
-        
-        # Build payload with conditional userHash
-        params = {
-            "apiKey": self.api_key,
-            "query": query,
-            "pageSize": page_size,
-            "pageNumber": page_number
-        }
-        
-        # Add userHash if available
-        if self.user_hash:
-            params["userHash"] = self.user_hash
-            print("DEBUG: ✅ Including userHash in request")
-        else:
-            print("DEBUG: ⚠️ No userHash available - API may reject request")
-        
-        payload = {"params": params}
+            
+    except Exception as e:
+        print(f"DEBUG: ❌ brickse search failed: {e}")
+        return []
 
-        # DEBUG: Print the request payload
-        print(f"DEBUG: Request payload: {payload}")
+def get_brickset_set(set_id: str):
+    """Get a specific LEGO set by ID using brickse"""
+    print(f"DEBUG: get_brickset_set called with set_id: '{set_id}'")
+    
+    try:
+        print("DEBUG: 🔍 Getting set details using brickse.lego.get_set...")
         
-        try:
-            print(f"DEBUG: Making POST request to: {self.GETSETS_URL}")
-            r = requests.post(self.GETSETS_URL, json=payload, timeout=30)
-            print(f"DEBUG: Response status code: {r.status_code}")
-            print(f"DEBUG: Response headers: {dict(r.headers)}")
-            print(f"DEBUG: Response content type: {r.headers.get('content-type', 'unknown')}")
-            
-            # DEBUG: Print the raw API response for troubleshooting
-            response_text = r.text
-            print("DEBUG: Brickset API response text:", response_text[:500] + "..." if len(response_text) > 500 else response_text)
-            
-            # DEBUG: Check for common error patterns in response
-            if "error" in response_text.lower():
-                print("DEBUG: ⚠️ ERROR keyword found in response")
-            if "invalid" in response_text.lower():
-                print("DEBUG: ⚠️ INVALID keyword found in response")
-            if "unauthorized" in response_text.lower():
-                print("DEBUG: ❌ UNAUTHORIZED keyword found in response")
-            if "rate limit" in response_text.lower():
-                print("DEBUG: ⚠️ RATE LIMIT keyword found in response")
-            if "authentication" in response_text.lower():
-                print("DEBUG: ❌ AUTHENTICATION keyword found in response")
-            if "missing parameter" in response_text.lower():
-                print("DEBUG: ❌ MISSING PARAMETER - may need userHash")
-            
-            r.raise_for_status()
-            json_data = r.json()
-            print(f"DEBUG: ✅ Successfully parsed as JSON: {json_data}")
-            
-            # DEBUG: Analyze JSON structure
-            if isinstance(json_data, dict):
-                print(f"DEBUG: JSON keys: {list(json_data.keys())}")
-                if 'sets' in json_data:
-                    print(f"DEBUG: ✅ Sets array length: {len(json_data['sets'])}")
-                if 'status' in json_data:
-                    print(f"DEBUG: Status: {json_data['status']}")
-                if 'message' in json_data:
-                    print(f"DEBUG: Message: {json_data['message']}")
-            
-            return json_data.get("sets", [])
-                
-        except requests.exceptions.HTTPError as e:
-            print(f"DEBUG: ❌ HTTP Error during API call: {e}")
-            if e.response.status_code == 401:
-                print("DEBUG: ❌ 401 Unauthorized - Authentication failed")
-                if not self.user_hash:
-                    print("DEBUG: 💡 Try adding username/password to .env file")
-            elif e.response.status_code == 403:
-                print("DEBUG: ❌ 403 Forbidden - Access denied")
-            elif e.response.status_code == 500:
-                print("DEBUG: ❌ 500 Server Error - may be missing required parameters")
-                if not self.user_hash:
-                    print("DEBUG: 💡 Try adding username/password to .env file")
-            return []
-        except Exception as request_error:
-            print(f"DEBUG: ❌ Request failed: {request_error}")
-            return []
-
-    def get_set_by_id(self, set_id: str):
-        # DEBUG: Print the set ID being requested
-        print(f"DEBUG: get_set_by_id called with set_id: '{set_id}'")
+        # Use brickse to get specific set
+        response = brickse.lego.get_set(set_number=set_id)
+        data = json.loads(response.read())
         
-        if not self.user_hash:
-            print("DEBUG: ⚠️ No user_hash available - API may reject request")
+        print(f"DEBUG: ✅ brickse get_set successful")
+        print(f"DEBUG: Response type: {type(data)}")
         
-        params = {
-            "apiKey": self.api_key,
-            "setNumber": set_id,
-            "pageSize": 1,
-            "pageNumber": 1
-        }
-        
-        # Add userHash if available
-        if self.user_hash:
-            params["userHash"] = self.user_hash
-            print("DEBUG: ✅ Including userHash in request")
+        # Handle different response formats
+        if isinstance(data, dict) and 'sets' in data:
+            sets = data['sets']
+            if sets:
+                print(f"DEBUG: ✅ Found set: {sets[0].get('name', 'Unknown')}")
+                return sets[0]
+        elif isinstance(data, list) and data:
+            print(f"DEBUG: ✅ Found set: {data[0].get('name', 'Unknown')}")
+            return data[0]
         else:
-            print("DEBUG: ⚠️ No userHash available - API may reject request")
-        
-        payload = {"params": params}
-        
-        try:
-            response = requests.post(self.GETSETS_URL, json=payload, timeout=30)
-            print(f"DEBUG: get_set_by_id response status: {response.status_code}")
-            
-            # DEBUG: Print the raw API response for troubleshooting
-            response_text = response.text
-            print("DEBUG: Brickset API response text:", response_text[:500] + "..." if len(response_text) > 500 else response_text)
-            
-            response.raise_for_status()
-            sets = response.json().get("sets", [])
-            print(f"DEBUG: ✅ get_set_by_id found {len(sets)} sets")
-            return sets[0] if sets else None
-        except Exception as e:
-            print(f"DEBUG: ❌ get_set_by_id request failed: {e}")
+            print(f"DEBUG: ⚠️ Set not found or unexpected format: {data}")
             return None
+            
+    except Exception as e:
+        print(f"DEBUG: ❌ brickse get_set failed: {e}")
+        return None
 
-    def test_simple_query(self):
-        """Test with a simple, guaranteed-to-work query"""
-        print("DEBUG: Testing with simple query 'star'...")
-        test_results = self.get_sets("star")
-        print(f"DEBUG: Simple query test returned {len(test_results)} results")
-        if test_results:
-            print("DEBUG: ✅ API test successful - authentication working")
-        else:
-            print("DEBUG: ❌ API test failed - check credentials")
-            if not self.user_hash:
-                print("DEBUG: 💡 Try adding username/password to .env file")
-        return test_results
+def test_brickset_api():
+    """Test brickse API with a simple query"""
+    print("DEBUG: Testing brickse with simple query 'star'...")
+    test_results = search_brickset_sets("star")
+    print(f"DEBUG: brickse test returned {len(test_results)} results")
+    if test_results:
+        print("DEBUG: ✅ brickse API test successful")
+    else:
+        print("DEBUG: ❌ brickse API test failed")
+    return test_results
 
 class LegoAPI:
     def __init__(self):
@@ -276,16 +158,17 @@ class LegoAPI:
         if not brickowl_key:
             print("DEBUG: ⚠️ WARNING - BRICKOWL_API_KEY is missing!")
         
-        self.brickset = BricksetAPIv3(api_key=brickset_key, username=brickset_username, password=brickset_password)
-        self.rebrickable = Rebrick(api_key=rebrickable_key)
+        # Initialize brickse
+        self.brickset_initialized = init_brickset()
+        self.rebrickable = Rebrick(api_key=rebrickable_key) if rebrickable_key else None
         self.brickowl_key = brickowl_key
         
         # DEBUG: Test simple query on initialization
-        if brickset_key:
+        if self.brickset_initialized:
             print("DEBUG: Running initial API test...")
-            self.brickset.test_simple_query()
+            test_brickset_api()
         else:
-            print("DEBUG: Skipping API test - missing API key")
+            print("DEBUG: Skipping API test - brickse not initialized")
 
     def fetch_set(self, set_id: str) -> LegoSet:
         """
@@ -295,28 +178,30 @@ class LegoAPI:
         print(f"DEBUG: fetch_set called for set_id: {set_id}")
         
         # Brickset: Get set details
-        brickset_data = self.brickset.get_set_by_id(set_id)
+        brickset_data = get_brickset_set(set_id)
         if not brickset_data:
             raise ValueError(f"Set {set_id} not found in Brickset API.")
 
         # Rebrickable: Get parts and minifigs
-        try:
-            rebrickable_data = self.rebrickable.get_set(set_id)
-            print(f"DEBUG: Rebrickable data: {rebrickable_data}")
-        except Exception as e:
-            print(f"DEBUG: Rebrickable error: {e}")
-            rebrickable_data = {}
+        rebrickable_data = {}
+        if self.rebrickable:
+            try:
+                rebrickable_data = self.rebrickable.get_set(set_id)
+                print(f"DEBUG: Rebrickable data: {rebrickable_data}")
+            except Exception as e:
+                print(f"DEBUG: Rebrickable error: {e}")
 
         # BrickOwl: Get pricing
-        try:
-            brickowl_response = requests.get(
-                f"https://api.brickowl.com/v1/catalog/get_set?set_id={set_id}",
-                headers={"Authorization": f"Bearer {self.brickowl_key}"}
-            ).json()
-            print(f"DEBUG: BrickOwl response: {brickowl_response}")
-        except Exception as e:
-            print(f"DEBUG: BrickOwl error: {e}")
-            brickowl_response = {}
+        brickowl_response = {}
+        if self.brickowl_key:
+            try:
+                brickowl_response = requests.get(
+                    f"https://api.brickowl.com/v1/catalog/get_set?set_id={set_id}",
+                    headers={"Authorization": f"Bearer {self.brickowl_key}"}
+                ).json()
+                print(f"DEBUG: BrickOwl response: {brickowl_response}")
+            except Exception as e:
+                print(f"DEBUG: BrickOwl error: {e}")
 
         # Combine data into LegoSet
         lego_set = LegoSet(
@@ -337,23 +222,23 @@ class LegoAPI:
         """
         print(f"DEBUG: search_sets called with query: '{query}'")
         
-        # DEBUG: Test with simple query if original fails
-        brickset_results = self.brickset.get_sets(query)
+        # Search using brickse
+        brickset_results = search_brickset_sets(query)
         print(f"DEBUG: Brickset returned {len(brickset_results)} raw results")
         
         # If no results, try a simpler query as fallback
         if len(brickset_results) == 0 and len(query) > 3:
             print(f"DEBUG: No results for '{query}', trying simpler query...")
             simple_query = query.split()[0]  # Use first word
-            brickset_results = self.brickset.get_sets(simple_query)
+            brickset_results = search_brickset_sets(simple_query)
             print(f"DEBUG: Simpler query '{simple_query}' returned {len(brickset_results)} results")
         
         # Convert to LegoSet objects
         lego_sets = [
             LegoSet(
-                set_id=s["setID"],
-                name=s["name"],
-                theme=s["theme"],
+                set_id=s.get("setID", s.get("number", "")),
+                name=s.get("name", ""),
+                theme=s.get("theme", ""),
                 piece_count=s.get("pieces", 0),
                 price=None,  # Price and full details fetched only on demand
                 release_year=s.get("year", None),
