@@ -20,7 +20,7 @@ A Streamlit-based AI assistant for LEGO collectors that combines multiple LEGO A
 - Docker and Docker Compose
 - API keys for:
   - OpenAI
-  - Brickset
+  - Brickset (API key + username + password)
   - Rebrickable
   - BrickOwl
 
@@ -29,10 +29,14 @@ A Streamlit-based AI assistant for LEGO collectors that combines multiple LEGO A
 1. Create a `.env` file in the root directory:
 ```env
 OPENAI_API_KEY=your_openai_key
-BRICKSET_API_KEY=your_brickset_key
+BRICKSET_API_KEY=your_brickset_api_key
+BRICKSET_USERNAME=your_brickset_username
+BRICKSET_PASSWORD=your_brickset_password
 REBRICKABLE_API_KEY=your_rebrickable_key
 BRICKOWL_API_KEY=your_brickowl_key
 ```
+
+**Note:** Brickset now requires authentication (username + password) for API access. You'll need to create a Brickset account and get your API key from their website.
 
 ### Running the Application
 
