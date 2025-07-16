@@ -18,11 +18,16 @@ class LegoSet(BaseModel):
 
     @validator('set_id')
     def validate_set_id(cls, v):
-        logger.debug(f"Validating set_id: {v}")
-        if not v or not v.strip():
+        logger.debug(f"Validating set_id: {v} (type: {type(v)})")
+        # Convert integer to string if needed
+        if isinstance(v, int):
+            v = str(v)
+            logger.debug(f"Converted integer set_id to string: {v}")
+        
+        if not v or not str(v).strip():
             logger.warning(f"Empty set_id provided: {v}")
             raise ValueError("set_id cannot be empty")
-        return v.strip()
+        return str(v).strip()
 
     @validator('name')
     def validate_name(cls, v):

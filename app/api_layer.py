@@ -234,18 +234,34 @@ class LegoAPI:
             print(f"DEBUG: Simpler query '{simple_query}' returned {len(brickset_results)} results")
         
         # Convert to LegoSet objects
-        lego_sets = [
-            LegoSet(
-                set_id=s.get("setID", s.get("number", "")),
-                name=s.get("name", ""),
-                theme=s.get("theme", ""),
-                piece_count=s.get("pieces", 0),
-                price=None,  # Price and full details fetched only on demand
-                release_year=s.get("year", None),
-                description=s.get("description", "")
-            )
-            for s in brickset_results
-        ]
+        lego_sets = []
+        for s in brickset_results:
+            print(f"DEBUG: Processing set data: {s}")
+            
+            # Try different possible field names for set_id
+            set_id = s.get("setID") or s.get("number") or s.get("setNumber") or s.get("id")
+            if set_id is None:
+                print(f"DEBUG: ⚠️ No set_id found in set data: {s}")
+                continue
+                
+            print(f"DEBUG: Using set_id: {set_id} (type: {type(set_id)})")
+            
+            try:
+                lego_set = LegoSet(
+                    set_id=set_id,
+                    name=s.get("name", ""),
+                    theme=s.get("theme", ""),
+                    piece_count=s.get("pieces", 0),
+                    price=None,  # Price and full details fetched only on demand
+                    release_year=s.get("year", None),
+                    description=s.get("description", "")
+                )
+                lego_sets.append(lego_set)
+                print(f"DEBUG: ✅ Successfully created LegoSet: {lego_set.set_id}")
+            except Exception as e:
+                print(f"DEBUG: ❌ Failed to create LegoSet: {e}")
+                print(f"DEBUG: Set data: {s}")
+                continue
         
         print(f"DEBUG: search_sets returning {len(lego_sets)} LegoSet objects")
         return lego_sets

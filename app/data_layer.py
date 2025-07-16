@@ -123,7 +123,7 @@ class DataLayer:
                     try:
                         # Convert row to dict
                         row_dict = {
-                            'set_id': row[0],
+                            'set_id': str(row[0]) if row[0] is not None else "",  # Ensure set_id is string
                             'name': row[1],
                             'theme': row[2],
                             'piece_count': row[3],
@@ -166,6 +166,10 @@ class DataLayer:
             sets = []
             for i, metadata in enumerate(results["metadatas"][0]):
                 try:
+                    # Ensure set_id is string in metadata
+                    if 'set_id' in metadata and metadata['set_id'] is not None:
+                        metadata['set_id'] = str(metadata['set_id'])
+                    
                     lego_set = LegoSet(**metadata)
                     sets.append(lego_set)
                     logger.debug(f"✅ Converted metadata to LegoSet: {lego_set.set_id}")
