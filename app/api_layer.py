@@ -21,11 +21,20 @@ if os.path.exists(env_file_path):
     print(f"DEBUG: .env file size: {os.path.getsize(env_file_path)} bytes")
 
 class BricksetAPIv3:
-    BASE_URL = "https://brickset.com/api/v3.asmx"
+    LOGIN_URL = "https://brickset.com/api/v3.asmx/login"
+    GETSETS_URL = "https://brickset.com/api/v3.asmx/getSets"
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key, username=None, password=None):
         self.api_key = api_key
+        self.user_hash = None
         print(f"DEBUG: BricksetAPIv3 initialized with key: {self.api_key[:10]}..." if self.api_key else "DEBUG: BricksetAPIv3 initialized with NO KEY")
+        
+        if username and password:
+            print("DEBUG: Attempting login with username/password...")
+            self.user_hash = self._login(username, password)
+            print(f"DEBUG: Login successful, user_hash: {self.user_hash[:10]}..." if self.user_hash else "DEBUG: Login failed")
+        else:
+            print("DEBUG: No username/password provided, using anonymous access")
         
         # DEBUG: Test API connectivity
         self.test_api_connectivity()
@@ -34,12 +43,31 @@ class BricksetAPIv3:
         """Test if we can reach the Brickset API endpoint"""
         try:
             print("DEBUG: Testing Brickset API connectivity...")
-            response = requests.get(self.BASE_URL, timeout=10)
+            response = requests.get(self.GETSETS_URL, timeout=10)
             print(f"DEBUG: Brickset API endpoint reachable: {response.status_code}")
         except Exception as e:
             print(f"DEBUG: Brickset API connectivity test failed: {e}")
 
-    def get_sets(self, query: str):
+    def _login(self, username, password):
+        try:
+            resp = requests.post(
+                self.LOGIN_URL,
+                json={"params": {
+                    "apiKey": self.api_key,
+                    "username": username,
+                    "password": password
+                }},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            print(f"DEBUG: Login response: {data}")
+            return data[0]["hash"]
+        except Exception as e:
+            print(f"DEBUG: Login failed: {e}")
+            return None
+
+    def get_sets(self, query, page_size=5, page_number=1):
         # DEBUG: Print the search query and API key being used
         print(f"DEBUG: get_sets called with query: '{query}'")
         print(f"DEBUG: Using API key: {self.api_key[:10]}..." if self.api_key else "DEBUG: NO API KEY AVAILABLE")
@@ -52,36 +80,28 @@ class BricksetAPIv3:
         if len(self.api_key) < 10:
             print(f"DEBUG: WARNING - API key seems too short: {len(self.api_key)} characters")
         
-        # Calls the Brickset getSets API method with correct params wrapper
-        payload = {
-            "params": {
-                "apiKey": self.api_key,
-                "userHash": "",
-                "query": query,
-                "theme": "",
-                "subtheme": "",
-                "setNumber": "",
-                "year": "",
-                "owned": "",
-                "wanted": "",
-                "orderBy": "",
-                "pageSize": 5,
-                "pageNumber": 1
-            }
+        params = {
+            "apiKey": self.api_key,
+            "query": query,
+            "pageSize": page_size,
+            "pageNumber": page_number,
         }
-        
+        if self.user_hash:
+            params["userHash"] = self.user_hash
+        payload = {"params": params}
+
         # DEBUG: Print the request payload
         print(f"DEBUG: Request payload: {payload}")
         
         try:
-            print(f"DEBUG: Making POST request to: {self.BASE_URL}/getSets")
-            response = requests.post(f"{self.BASE_URL}/getSets", json=payload, timeout=30)
-            print(f"DEBUG: Response status code: {response.status_code}")
-            print(f"DEBUG: Response headers: {dict(response.headers)}")
-            print(f"DEBUG: Response content type: {response.headers.get('content-type', 'unknown')}")
+            print(f"DEBUG: Making POST request to: {self.GETSETS_URL}")
+            r = requests.post(self.GETSETS_URL, json=payload, timeout=30)
+            print(f"DEBUG: Response status code: {r.status_code}")
+            print(f"DEBUG: Response headers: {dict(r.headers)}")
+            print(f"DEBUG: Response content type: {r.headers.get('content-type', 'unknown')}")
             
             # DEBUG: Print the raw API response for troubleshooting
-            response_text = response.text
+            response_text = r.text
             print("DEBUG: Brickset API response text:", response_text[:500] + "..." if len(response_text) > 500 else response_text)
             
             # DEBUG: Check for common error patterns in response
@@ -94,40 +114,21 @@ class BricksetAPIv3:
             if "rate limit" in response_text.lower():
                 print("DEBUG: RATE LIMIT keyword found in response")
             
-            # Check if response is successful
-            if response.status_code != 200:
-                print(f"DEBUG: HTTP Error {response.status_code}: {response_text}")
-                return []
+            r.raise_for_status()
+            json_data = r.json()
+            print(f"DEBUG: Successfully parsed as JSON: {json_data}")
             
-            # Try to parse as JSON first
-            try:
-                json_data = response.json()
-                print(f"DEBUG: Successfully parsed as JSON: {json_data}")
-                
-                # DEBUG: Analyze JSON structure
-                if isinstance(json_data, dict):
-                    print(f"DEBUG: JSON keys: {list(json_data.keys())}")
-                    if 'sets' in json_data:
-                        print(f"DEBUG: Sets array length: {len(json_data['sets'])}")
-                    if 'status' in json_data:
-                        print(f"DEBUG: Status: {json_data['status']}")
-                    if 'message' in json_data:
-                        print(f"DEBUG: Message: {json_data['message']}")
-                
-                return json_data.get("sets", [])
-            except Exception as json_error:
-                print(f"DEBUG: JSON parse failed: {json_error}")
-                print("DEBUG: Response is not JSON, might be XML or error message")
-                
-                # DEBUG: Try to identify response format
-                if response_text.strip().startswith('<'):
-                    print("DEBUG: Response appears to be XML")
-                elif response_text.strip().startswith('{'):
-                    print("DEBUG: Response appears to be JSON but failed to parse")
-                else:
-                    print("DEBUG: Response format unclear")
-                
-                return []
+            # DEBUG: Analyze JSON structure
+            if isinstance(json_data, dict):
+                print(f"DEBUG: JSON keys: {list(json_data.keys())}")
+                if 'sets' in json_data:
+                    print(f"DEBUG: Sets array length: {len(json_data['sets'])}")
+                if 'status' in json_data:
+                    print(f"DEBUG: Status: {json_data['status']}")
+                if 'message' in json_data:
+                    print(f"DEBUG: Message: {json_data['message']}")
+            
+            return json_data.get("sets", [])
                 
         except Exception as request_error:
             print(f"DEBUG: Request failed: {request_error}")
@@ -137,32 +138,28 @@ class BricksetAPIv3:
         # DEBUG: Print the set ID being requested
         print(f"DEBUG: get_set_by_id called with set_id: '{set_id}'")
         
-        # Calls getSets with setNumber to fetch a specific set with correct params wrapper
-        payload = {
-            "params": {
-                "apiKey": self.api_key,
-                "userHash": "",
-                "setNumber": set_id,
-                "pageSize": 1,
-                "pageNumber": 1
-            }
+        params = {
+            "apiKey": self.api_key,
+            "setNumber": set_id,
+            "pageSize": 1,
+            "pageNumber": 1,
         }
+        if self.user_hash:
+            params["userHash"] = self.user_hash
+        payload = {"params": params}
         
         try:
-            response = requests.post(f"{self.BASE_URL}/getSets", json=payload, timeout=30)
+            response = requests.post(self.GETSETS_URL, json=payload, timeout=30)
             print(f"DEBUG: get_set_by_id response status: {response.status_code}")
             
             # DEBUG: Print the raw API response for troubleshooting
             response_text = response.text
             print("DEBUG: Brickset API response text:", response_text[:500] + "..." if len(response_text) > 500 else response_text)
             
-            try:
-                sets = response.json().get("sets", [])
-                print(f"DEBUG: get_set_by_id found {len(sets)} sets")
-                return sets[0] if sets else None
-            except Exception as e:
-                print("DEBUG: JSON decode error:", e)
-                return None
+            response.raise_for_status()
+            sets = response.json().get("sets", [])
+            print(f"DEBUG: get_set_by_id found {len(sets)} sets")
+            return sets[0] if sets else None
         except Exception as e:
             print(f"DEBUG: get_set_by_id request failed: {e}")
             return None
